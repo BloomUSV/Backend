@@ -1,0 +1,1780 @@
+openapi: 3.0.3
+info:
+  title: Research Resource Manager API
+  version: 1.0.0
+  description: |
+    REST contract for the Research Resource Manager frontend and its existing
+    PostgreSQL schema. The inspected workspace is named Research Resource
+    Manager (not CampusConnect).
+
+    The resource CRUD and authentication endpoints are implemented by the
+    Node.js/Express backend. Other endpoints describe the JSON API planned for
+    the remaining prototype screens and may not yet have server routes.
+
+    Database alignment:
+    `users`, `resources`, `reservations`, `waitlist_entries`, `notifications`,
+    `feedback`, `resource_rules`, and `maintenance_blocks`. JSON properties
+    use camelCase while mapping to the database's snake_case columns.
+    `maintenance_blocks` has no corresponding maintenance-management UI or
+    endpoint in this contract. The UI also contains no password-reset flow,
+    resource-specific rule editor, or user-management screen.
+  contact:
+    name: Research Resource Manager
+servers:
+  - url: /api
+    description: API base path; configure the deployment host in the client.
+tags:
+  - name: Authentication
+    description: Sign-in and current authenticated account.
+  - name: Resources
+    description: Resource catalog, details, and administration.
+  - name: Calendar
+    description: Reservation events displayed in the availability calendar.
+  - name: Reservations
+    description: User bookings and manager/admin decisions.
+  - name: Waitlist
+    description: Queue entries and user preferences.
+  - name: Notifications
+    description: In-app notifications and read state.
+  - name: Feedback
+    description: Feedback submissions and user feedback history.
+  - name: Rules
+    description: Usage rules shown for resources.
+  - name: Administration
+    description: Dashboard aggregates and approval queue.
+paths:
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Authenticate with an institutional account
+      description: |
+        Sets an HttpOnly session cookie. Passwords are checked against bcrypt
+        hashes and are never returned.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: andrei.ionescu@usv.ro
+              password: example-password
+      responses:
+        '200':
+          description: Authentication succeeded.
+          headers:
+            Set-Cookie:
+              description: HttpOnly session cookie for subsequent requests.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              example:
+                user:
+                  id: 8b28915c-fc35-4f90-b03b-5cf41a95a66d
+                  fullName: Andrei Ionescu
+                  email: andrei.ionescu@usv.ro
+                  role: user
+                  isActive: true
+                  createdAt: '2025-01-15T10:00:00Z'
+                  updatedAt: '2025-01-15T10:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      summary: End the current browser session
+      description: Clears the HttpOnly session cookie.
+      security: []
+      responses:
+        '204':
+          description: Session cookie cleared.
+          headers:
+            Set-Cookie:
+              description: Expired session cookie.
+              schema:
+                type: string
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      operationId: getCurrentUser
+      summary: Get the authenticated account
+      responses:
+        '200':
+          description: Current account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /resources:
+    get:
+      tags: [Resources]
+      operationId: listResources
+      summary: Search and filter the resource catalog
+      parameters:
+        - name: search
+          in: query
+          description: |
+            Case-insensitive substring search across resource name, description,
+            location, and specifications.
+          schema:
+            type: string
+            maxLength: 200
+          example: Robot
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/ResourceType'
+        - name: state
+          in: query
+          schema:
+            $ref: '#/components/schemas/ResourceState'
+        - name: availableFrom
+          in: query
+          description: Filter to resources with no active reservation overlapping this start time.
+          schema:
+            type: string
+            format: date-time
+        - name: availableTo
+          in: query
+          description: Must be supplied together with availableFrom.
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Matching active resources.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceList'
+              example:
+                data:
+                  - id: 29fe1434-a3ef-43be-a0fc-2ab4b52dd332
+                    name: Robot colaborativ UR10e
+                    type: robot
+                    description: Braț robotic cu 6 axe pentru prototipare și cercetare HRI.
+                    location: Corp D, Lab. D105
+                    state: available
+                    specifications:
+                      razaDeActiune: 1300 mm
+                      sarcinaUtila: 12.5 kg
+                    managerId: 2721d8dd-f63e-4e31-bf1e-f7203b0a7e23
+                    isActive: true
+                    createdAt: '2025-01-10T09:00:00Z'
+                    updatedAt: '2025-05-01T10:30:00Z'
+                pagination:
+                  page: 1
+                  pageSize: 20
+                  totalItems: 1
+                  totalPages: 1
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags: [Resources]
+      operationId: createResource
+      summary: Add a resource
+      description: Adds a resource to the active catalog.
+      security:
+        - cookieAuth: []
+      x-required-roles: [manager, administrator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceInput'
+            example:
+              name: Robot colaborativ UR10e
+              type: robot
+              description: Braț robotic cu 6 axe pentru prototipare și cercetare HRI.
+              location: Corp D, Lab. D105
+              state: available
+              specifications:
+                razaDeActiune: 1300 mm
+                sarcinaUtila: 12.5 kg
+              managerId: 2721d8dd-f63e-4e31-bf1e-f7203b0a7e23
+      responses:
+        '201':
+          description: Resource created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /resources/archived:
+    get:
+      tags: [Resources]
+      operationId: listArchivedResources
+      summary: List archived resources for managers
+      security:
+        - cookieAuth: []
+      x-required-roles: [manager, administrator]
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/ResourceType'
+        - name: state
+          in: query
+          schema:
+            $ref: '#/components/schemas/ResourceState'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Archived resources.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /resources/{resourceId}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Resources]
+      operationId: getResource
+      summary: Get resource details
+      responses:
+        '200':
+          description: Resource details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+              example:
+                id: 29fe1434-a3ef-43be-a0fc-2ab4b52dd332
+                name: Robot colaborativ UR10e
+                type: robot
+                description: Braț robotic cu 6 axe pentru prototipare și cercetare HRI.
+                location: Corp D, Lab. D105
+                state: available
+                specifications:
+                  razaDeActiune: 1300 mm
+                  sarcinaUtila: 12.5 kg
+                managerId: 2721d8dd-f63e-4e31-bf1e-f7203b0a7e23
+                isActive: true
+                createdAt: '2025-01-10T09:00:00Z'
+                updatedAt: '2025-05-01T10:30:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    put:
+      tags: [Resources]
+      operationId: updateResource
+      summary: Replace editable resource fields
+      description: Replaces the editable fields of an active resource.
+      security:
+        - cookieAuth: []
+      x-required-roles: [manager, administrator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceInput'
+      responses:
+        '200':
+          description: Updated resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags: [Resources]
+      operationId: archiveResource
+      summary: Archive a resource
+      description: Soft-deactivates the resource by setting resources.is_active to false; it does not physically delete related records.
+      security:
+        - cookieAuth: []
+      x-required-roles: [manager, administrator]
+      responses:
+        '204':
+          description: Resource archived.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /resources/{resourceId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Resources]
+      operationId: restoreResource
+      summary: Restore an archived resource
+      description: Sets resources.is_active to true and returns the restored resource.
+      security:
+        - cookieAuth: []
+      x-required-roles: [manager, administrator]
+      responses:
+        '200':
+          description: Resource restored to the active catalog.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /resources/{resourceId}/rules:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Rules]
+      operationId: listResourceRules
+      summary: List rules for a resource
+      responses:
+        '200':
+          description: Rules belonging to the resource.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ResourceRule'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags: [Rules]
+      operationId: createResourceRule
+      summary: Add a resource usage rule
+      description: Implied by the administration screen's rule-management scope and resource_rules table; the prototype only displays rules.
+      security:
+        - cookieAuth: []
+      x-required-roles: [manager, administrator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceRuleInput'
+            example:
+              title: Safety training
+              content: Instruirea de siguranță trebuie finalizată înainte de rezervare.
+      responses:
+        '201':
+          description: Rule created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceRule'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /resources/{resourceId}/rules/{ruleId}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+      - name: ruleId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Rules]
+      operationId: updateResourceRule
+      summary: Replace a resource rule
+      description: Administrative operation implied by the resource_rules table; no rule-editing control is wired in the current frontend.
+      security:
+        - cookieAuth: []
+      x-required-roles: [manager, administrator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceRuleInput'
+      responses:
+        '200':
+          description: Updated rule.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceRule'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags: [Rules]
+      operationId: deleteResourceRule
+      summary: Delete a resource rule
+      description: Administrative operation implied by the resource_rules table; no delete control is wired in the current frontend.
+      security:
+        - cookieAuth: []
+      x-required-roles: [manager, administrator]
+      responses:
+        '204':
+          description: Rule deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /calendar/events:
+    get:
+      tags: [Calendar]
+      operationId: listCalendarEvents
+      summary: Get reservations for the calendar range
+      description: Returns reservation events only. Free-slot computation is based on the resource reservation intervals and is not stored as a separate entity.
+      parameters:
+        - name: start
+          in: query
+          required: true
+          description: Inclusive beginning of the calendar range.
+          schema:
+            type: string
+            format: date-time
+        - name: end
+          in: query
+          required: true
+          description: Exclusive end of the calendar range; must be later than start.
+          schema:
+            type: string
+            format: date-time
+        - name: resourceId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ReservationState'
+      responses:
+        '200':
+          description: Calendar events within the requested interval.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CalendarEvent'
+              example:
+                - id: 3f294119-c1e8-47d7-9e90-658a89c92935
+                  resourceId: 29fe1434-a3ef-43be-a0fc-2ab4b52dd332
+                  resourceName: Robot colaborativ UR10e
+                  reservationId: 4504c806-b464-42e5-bb8b-14af70f32b16
+                  startsAt: '2025-06-18T10:00:00+03:00'
+                  endsAt: '2025-06-18T12:00:00+03:00'
+                  status: confirmed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /reservations:
+    get:
+      tags: [Reservations]
+      operationId: listReservations
+      summary: List reservations visible to the current account
+      description: Regular users see their own reservations; managers and administrators may filter across reservations they are authorized to manage.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ReservationState'
+        - name: resourceId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: startsAfter
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: startsBefore
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Reservations visible to the current account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags: [Reservations]
+      operationId: createReservation
+      summary: Submit a reservation request
+      description: Creates a pending request. Overlapping pending, confirmed, or in-progress reservations for the same resource conflict with the database exclusion constraint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReservationCreate'
+            example:
+              resourceId: 29fe1434-a3ef-43be-a0fc-2ab4b52dd332
+              startsAt: '2025-06-18T10:00:00+03:00'
+              endsAt: '2025-06-18T12:00:00+03:00'
+              purpose: Testarea algoritmului de control adaptiv pentru manipulare colaborativă.
+              teamName: Echipa RoboLab
+      responses:
+        '201':
+          description: Reservation request submitted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /reservations/{reservationId}:
+    parameters:
+      - $ref: '#/components/parameters/ReservationId'
+    get:
+      tags: [Reservations]
+      operationId: getReservation
+      summary: Get a reservation
+      responses:
+        '200':
+          description: Reservation details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    put:
+      tags: [Reservations]
+      operationId: updateReservation
+      summary: Replace reservation details
+      description: The reservation list exposes an Edit action. Only the owner may edit a pending request; server authorization must enforce the applicable policy and overlap constraint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReservationUpdate'
+      responses:
+        '200':
+          description: Updated reservation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    patch:
+      tags: [Reservations]
+      operationId: changeReservationStatus
+      summary: Cancel, approve, reject, or update reservation status
+      description: Users may cancel their own eligible reservation. Managers or administrators may approve or reject requests. State changes must follow the reservation state enum.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReservationStatusUpdate'
+            examples:
+              cancel:
+                value:
+                  status: cancelled
+              approve:
+                value:
+                  status: confirmed
+      responses:
+        '200':
+          description: Reservation status updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /waitlist:
+    get:
+      tags: [Waitlist]
+      operationId: listWaitlistEntries
+      summary: List the current user's waitlist entries
+      parameters:
+        - name: resourceId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/WaitlistState'
+      responses:
+        '200':
+          description: Waitlist entries in queue order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WaitlistEntry'
+              example:
+                - id: aa8ac128-7619-4225-a451-6152b34ce2a7
+                  userId: 8b28915c-fc35-4f90-b03b-5cf41a95a66d
+                  resourceId: c19761db-ec99-4223-9794-a4dc397c2c51
+                  desiredStart: '2025-06-25T09:00:00+03:00'
+                  desiredEnd: '2025-06-27T17:00:00+03:00'
+                  requirements:
+                    gpuNodes: 16
+                  status: waiting
+                  position: 1
+                  createdAt: '2025-06-10T12:00:00Z'
+                  updatedAt: '2025-06-10T12:00:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags: [Waitlist]
+      operationId: createWaitlistEntry
+      summary: Join a resource waitlist
+      description: Supports the waitlist screen and its notification-preference control. Queue position is derived from creation order and is not stored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WaitlistEntryCreate'
+      responses:
+        '201':
+          description: Waitlist entry created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WaitlistEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /waitlist/{entryId}:
+    parameters:
+      - name: entryId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Waitlist]
+      operationId: updateWaitlistEntry
+      summary: Replace waitlist preferences
+      description: Corresponds to the waitlist screen's “Modifică preferințele” control.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WaitlistEntryUpdate'
+      responses:
+        '200':
+          description: Updated waitlist entry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WaitlistEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: List notifications for the current user
+      parameters:
+        - name: unreadOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Notifications ordered newest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationList'
+              example:
+                data:
+                  - id: 68706e27-9676-4b79-a238-06e86e095824
+                    userId: 8b28915c-fc35-4f90-b03b-5cf41a95a66d
+                    reservationId: 4504c806-b464-42e5-bb8b-14af70f32b16
+                    message: Rezervarea stației de lipit Weller a fost aprobată.
+                    type: booking_confirmed
+                    isRead: false
+                    emailSent: true
+                    createdAt: '2025-06-18T07:42:00Z'
+                pagination:
+                  page: 1
+                  pageSize: 20
+                  totalItems: 1
+                  totalPages: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /notifications/{notificationId}:
+    parameters:
+      - name: notificationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Notifications]
+      operationId: markNotificationRead
+      summary: Mark a notification as read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationReadUpdate'
+            example:
+              isRead: true
+      responses:
+        '200':
+          description: Updated notification.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /notifications/read-all:
+    patch:
+      tags: [Notifications]
+      operationId: markAllNotificationsRead
+      summary: Mark all current-user notifications as read
+      description: Corresponds to the notifications screen's “Marchează toate ca citite” control.
+      responses:
+        '204':
+          description: All current-user notifications marked as read.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /feedback:
+    get:
+      tags: [Feedback]
+      operationId: listFeedback
+      summary: Get the current user's feedback history
+      parameters:
+        - name: resourceId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Feedback history, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackList'
+              example:
+                data:
+                  - id: 5687ad36-29af-44c3-93ea-3af047bff72e
+                    userId: 8b28915c-fc35-4f90-b03b-5cf41a95a66d
+                    resourceId: 29fe1434-a3ef-43be-a0fc-2ab4b52dd332
+                    rating: 5
+                    message: Calendarul este foarte ușor de folosit.
+                    createdAt: '2025-06-02T11:00:00Z'
+                pagination:
+                  page: 1
+                  pageSize: 20
+                  totalItems: 1
+                  totalPages: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags: [Feedback]
+      operationId: submitFeedback
+      summary: Submit feedback about a resource
+      description: |
+        The database requires feedback.resource_id, while the current generic
+        feedback form has no resource selector. The frontend must supply the
+        resource context or this schema must be deliberately changed before
+        implementing the form-to-API integration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackCreate'
+            example:
+              resourceId: 29fe1434-a3ef-43be-a0fc-2ab4b52dd332
+              rating: 5
+              message: Calendarul este foarte ușor de folosit.
+      responses:
+        '201':
+          description: Feedback submitted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /admin/summary:
+    get:
+      tags: [Administration]
+      operationId: getAdminSummary
+      summary: Get administration dashboard counts
+      description: Provides aggregate counts shown by the administration dashboard. Counts are derived from users, resources, and reservations.
+      security:
+        - cookieAuth: []
+      x-required-roles: [administrator]
+      responses:
+        '200':
+          description: Dashboard summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSummary'
+              example:
+                activeUsers: 284
+                activeManagers: 18
+                activeResources: 48
+                unavailableResources: 5
+                pendingApprovals: 12
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /admin/reservations:
+    get:
+      tags: [Administration, Reservations]
+      operationId: listReservationsForReview
+      summary: List reservation requests requiring review
+      description: Returns pending requests for managers/admins to review.
+      security:
+        - cookieAuth: []
+      x-required-roles: [manager, administrator]
+      parameters:
+        - name: resourceId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Pending reservations available to the reviewer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: rrm.accessToken
+      description: HttpOnly JWT cookie set by POST /auth/login.
+  parameters:
+    ResourceId:
+      name: resourceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ReservationId:
+      name: reservationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      description: One-based page number.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  responses:
+    RateLimited:
+      description: Too many login attempts from this client.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: RATE_LIMITED
+            message: Too many attempts. Try again later.
+    BadRequest:
+      description: Malformed request or invalid query parameters.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: BAD_REQUEST
+            message: Request parameters are invalid.
+    Unauthorized:
+      description: Missing, invalid, or expired JWT; or invalid login credentials.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: UNAUTHORIZED
+            message: Authentication is required.
+    Forbidden:
+      description: Authenticated user lacks permission for this operation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: FORBIDDEN
+            message: This operation requires a manager or administrator role.
+    NotFound:
+      description: The requested entity does not exist or is not visible to this user.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: NOT_FOUND
+            message: Resource was not found.
+    Conflict:
+      description: Operation conflicts with current state, including overlapping reservations.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: RESERVATION_CONFLICT
+            message: The resource is already reserved during part of this interval.
+    ValidationError:
+      description: Request body or parameters failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+          example:
+            code: VALIDATION_ERROR
+            message: One or more fields are invalid.
+            details:
+              - field: endsAt
+                message: Must be later than startsAt.
+    ServerError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            code: INTERNAL_SERVER_ERROR
+            message: An unexpected error occurred.
+  schemas:
+    UserRole:
+      type: string
+      enum: [user, manager, administrator]
+    ResourceType:
+      type: string
+      enum: [equipment, robot, cluster, laboratory, room]
+    ResourceState:
+      type: string
+      enum: [available, unavailable, maintenance]
+    ReservationState:
+      type: string
+      enum: [pending, confirmed, in_progress, completed, cancelled, rejected, expired]
+    WaitlistState:
+      type: string
+      enum: [waiting, notified, confirmed, expired]
+    NotificationType:
+      type: string
+      enum: [booking_confirmed, booking_cancelled, slot_available, resource_maintenance]
+
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, fullName, email, role, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+          maxLength: 200
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        role:
+          $ref: '#/components/schemas/UserRole'
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      description: Maps to users. password_hash is never exposed.
+      example:
+        id: 8b28915c-fc35-4f90-b03b-5cf41a95a66d
+        fullName: Andrei Ionescu
+        email: andrei.ionescu@usv.ro
+        role: user
+        isActive: true
+        createdAt: '2025-01-15T10:00:00Z'
+        updatedAt: '2025-01-15T10:00:00Z'
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        password:
+          type: string
+          format: password
+          minLength: 1
+          writeOnly: true
+    LoginResponse:
+      type: object
+      additionalProperties: false
+      required: [user]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+
+    Resource:
+      type: object
+      additionalProperties: false
+      required: [id, name, type, description, location, state, specifications, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 200
+        type:
+          $ref: '#/components/schemas/ResourceType'
+        description:
+          type: string
+        location:
+          type: string
+          maxLength: 300
+        state:
+          $ref: '#/components/schemas/ResourceState'
+        specifications:
+          type: object
+          additionalProperties: true
+        managerId:
+          type: string
+          format: uuid
+          nullable: true
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      description: Maps to resources.
+      example:
+        id: 29fe1434-a3ef-43be-a0fc-2ab4b52dd332
+        name: Robot colaborativ UR10e
+        type: robot
+        description: Braț robotic cu 6 axe pentru prototipare și cercetare HRI.
+        location: Corp D, Lab. D105
+        state: available
+        specifications:
+          razaDeActiune: 1300 mm
+          sarcinaUtila: 12.5 kg
+        managerId: 2721d8dd-f63e-4e31-bf1e-f7203b0a7e23
+        isActive: true
+        createdAt: '2025-01-10T09:00:00Z'
+        updatedAt: '2025-05-01T10:30:00Z'
+    ResourceInput:
+      type: object
+      additionalProperties: false
+      required: [name, type, location]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        type:
+          $ref: '#/components/schemas/ResourceType'
+        description:
+          type: string
+          default: ''
+        location:
+          type: string
+          maxLength: 300
+        state:
+          $ref: '#/components/schemas/ResourceState'
+        specifications:
+          type: object
+          additionalProperties: true
+          description: Resource-specific specifications stored as JSONB.
+        managerId:
+          type: string
+          format: uuid
+          nullable: true
+    ResourceList:
+      type: object
+      additionalProperties: false
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resource'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Reservation:
+      type: object
+      additionalProperties: false
+      required: [id, userId, resourceId, startsAt, endsAt, purpose, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        resourceId:
+          type: string
+          format: uuid
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        purpose:
+          type: string
+        teamName:
+          type: string
+          maxLength: 200
+          nullable: true
+        status:
+          $ref: '#/components/schemas/ReservationState'
+        reviewedBy:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      description: Maps to reservations; the interval must be valid and active intervals must not overlap for a resource.
+    ReservationCreate:
+      type: object
+      additionalProperties: false
+      required: [resourceId, startsAt, endsAt]
+      properties:
+        resourceId:
+          type: string
+          format: uuid
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        purpose:
+          type: string
+          default: ''
+        teamName:
+          type: string
+          maxLength: 200
+          nullable: true
+    ReservationUpdate:
+      type: object
+      additionalProperties: false
+      required: [resourceId, startsAt, endsAt, purpose]
+      properties:
+        resourceId:
+          type: string
+          format: uuid
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        purpose:
+          type: string
+        teamName:
+          type: string
+          maxLength: 200
+          nullable: true
+    ReservationStatusUpdate:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [confirmed, cancelled, rejected, in_progress, completed, expired]
+    ReservationList:
+      type: object
+      additionalProperties: false
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reservation'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    CalendarEvent:
+      type: object
+      additionalProperties: false
+      required: [id, resourceId, resourceName, reservationId, startsAt, endsAt, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Calendar event identifier; corresponds to the reservation identifier.
+        resourceId:
+          type: string
+          format: uuid
+        resourceName:
+          type: string
+        reservationId:
+          type: string
+          format: uuid
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/ReservationState'
+
+    WaitlistEntry:
+      type: object
+      additionalProperties: false
+      required: [id, userId, resourceId, desiredStart, desiredEnd, requirements, status, position, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        resourceId:
+          type: string
+          format: uuid
+        desiredStart:
+          type: string
+          format: date-time
+        desiredEnd:
+          type: string
+          format: date-time
+        requirements:
+          type: object
+          additionalProperties: true
+        status:
+          $ref: '#/components/schemas/WaitlistState'
+        position:
+          type: integer
+          minimum: 1
+          description: Derived from queue order; not stored in the database.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    WaitlistEntryCreate:
+      type: object
+      additionalProperties: false
+      required: [resourceId, desiredStart, desiredEnd]
+      properties:
+        resourceId:
+          type: string
+          format: uuid
+        desiredStart:
+          type: string
+          format: date-time
+        desiredEnd:
+          type: string
+          format: date-time
+        requirements:
+          type: object
+          additionalProperties: true
+    WaitlistEntryUpdate:
+      type: object
+      additionalProperties: false
+      required: [desiredStart, desiredEnd, requirements]
+      properties:
+        desiredStart:
+          type: string
+          format: date-time
+        desiredEnd:
+          type: string
+          format: date-time
+        requirements:
+          type: object
+          additionalProperties: true
+
+    Notification:
+      type: object
+      additionalProperties: false
+      required: [id, userId, message, type, isRead, emailSent, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        reservationId:
+          type: string
+          format: uuid
+          nullable: true
+        message:
+          type: string
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        isRead:
+          type: boolean
+        emailSent:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      description: Maps to notifications. An optional reservation reference may be null after its reservation is removed.
+    NotificationReadUpdate:
+      type: object
+      additionalProperties: false
+      required: [isRead]
+      properties:
+        isRead:
+          type: boolean
+    NotificationList:
+      type: object
+      additionalProperties: false
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Feedback:
+      type: object
+      additionalProperties: false
+      required: [id, userId, resourceId, rating, message, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        resourceId:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        message:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      description: Maps to feedback. The database has no feedback status or subject column; those UI labels are not included in the API model.
+    FeedbackCreate:
+      type: object
+      additionalProperties: false
+      required: [resourceId, rating, message]
+      properties:
+        resourceId:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        message:
+          type: string
+          minLength: 1
+    FeedbackList:
+      type: object
+      additionalProperties: false
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Feedback'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    ResourceRule:
+      type: object
+      additionalProperties: false
+      required: [id, resourceId, title, content, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        resourceId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 200
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ResourceRuleInput:
+      type: object
+      additionalProperties: false
+      required: [title, content]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        content:
+          type: string
+
+    MaintenanceBlock:
+      type: object
+      description: Maps to maintenance_blocks. The table exists in the database but no matching management feature or endpoint is present in the inspected frontend.
+      additionalProperties: false
+      required: [id, resourceId, startsAt, endsAt, reason, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        resourceId:
+          type: string
+          format: uuid
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    AdminSummary:
+      type: object
+      additionalProperties: false
+      required: [activeUsers, activeManagers, activeResources, unavailableResources, pendingApprovals]
+      properties:
+        activeUsers:
+          type: integer
+          minimum: 0
+        activeManagers:
+          type: integer
+          minimum: 0
+        activeResources:
+          type: integer
+          minimum: 0
+        unavailableResources:
+          type: integer
+          minimum: 0
+        pendingApprovals:
+          type: integer
+          minimum: 0
+    Pagination:
+      type: object
+      additionalProperties: false
+      required: [page, pageSize, totalItems, totalPages]
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+        totalItems:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    ValidationError:
+      type: object
+      additionalProperties: false
+      required: [code, message, details]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+    FieldError:
+      type: object
+      additionalProperties: false
+      required: [field, message]
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+
+security:
+  - cookieAuth: []
