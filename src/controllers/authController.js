@@ -1,5 +1,14 @@
-import { getCurrentUser, login } from '../services/authService.js';
+import { getCurrentUser, login, register } from '../services/authService.js';
 import { AUTH_COOKIE_NAME, authCookieOptions } from '../middleware/auth.js';
+
+export async function registerUser(req, res, next) {
+  try {
+    const user = await register(req.body);
+    return res.status(201).json({ user });
+  } catch (error) {
+    return next(error);
+  }
+}
 
 export async function loginUser(req, res, next) {
   try {

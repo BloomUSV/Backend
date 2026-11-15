@@ -27,17 +27,18 @@ follow `docs/openapi.yaml`; the database schema is in
    Set `JWT_SECRET` to a random value of at least 32 characters. Keep `.env`
    local; never commit credentials.
 3. Install dependencies with `npm.cmd ci`.
-4. Create the initial manager account. In PowerShell, set the values for the
-   current process and run the script:
+4. Create the initial administrator account. In PowerShell, set the values for
+   the current process and run the script:
 
    ```powershell
    $env:ADMIN_EMAIL = 'manager@example.edu'
    $env:ADMIN_NAME = 'Resource Manager'
    $env:ADMIN_PASSWORD = 'replace-with-a-long-password'
-   npm.cmd run create:manager
+   node src/scripts/createAdministrator.js
    ```
 
-   Use a unique email address and a password of at least 12 characters.
+   Use a unique email address and a password of at least 12 characters. The
+   existing `create:manager` command remains available for manager accounts.
 
 5. Start the API with `npm.cmd run dev`. It listens on port 3001 by default.
    `/api/health` confirms that Express is running; successful startup also
@@ -54,9 +55,32 @@ not count and rate-limit events are logged. The default limiter store is
 in-memory and resets on process restart; configure a shared store if deploying
 multiple API instances.
 
+## Authentication and roles
+
+- `POST /api/auth/register` creates a regular `user` account. It accepts
+  `fullName`, `email`, and a 12–72 character `password`; registration cannot
+  select a role. It returns `201` with `{ "user": { ... } }` and the sanitized
+  account profile.
+- `POST /api/auth/login` accepts `email` and `password`, then sets the
+  HttpOnly `rrm.accessToken` cookie. It returns `{ "user": { ... } }`.
+- `GET /api/auth/me` returns the authenticated user's sanitized profile.
+- `POST /api/auth/logout` clears the session cookie.
+- `GET /api/users` lists accounts with `page` and `pageSize` pagination.
+- `PATCH /api/users/:userId` accepts `role` and/or `isActive` to change access.
+  Listing accounts and changing roles or account status require the
+  `administrator` role. Role values are `user`, `manager`, and `administrator`.
+
+All API errors use `{ "code": "...", "message": "..." }`; validation errors
+also include `details`. Password hashes are never included in responses.
+Registration is limited to 10 unsuccessful attempts per IP per 15 minutes.
+JWT session tokens use the `JWT_SECRET` and `JWT_EXPIRES_IN` environment
+variables. Existing role-based resource permissions are enforced server-side.
+
 ## Endpoints
 
-- `POST /api/auth/login`, `GET /api/auth/me`, and `POST /api/auth/logout`
+- `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, and
+  `POST /api/auth/logout`
+- `GET /api/users` and `PATCH /api/users/:userId` (administrator only)
 - `GET /api/resources`, `GET /api/resources/archived`, and
   `GET /api/resources/:resourceId`
 - `POST /api/resources`, `PUT /api/resources/:resourceId`, and

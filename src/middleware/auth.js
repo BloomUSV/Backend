@@ -71,7 +71,7 @@ export function authorize(...roles) {
         new ApiError(
           403,
           'FORBIDDEN',
-          'Această operațiune este disponibilă doar managerilor și administratorilor.',
+          'Nu ai permisiunea de a efectua această operațiune.',
         ),
       );
     }

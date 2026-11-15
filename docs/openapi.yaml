@@ -93,6 +93,66 @@ paths:
         '500':
           $ref: '#/components/responses/ServerError'
 
+  /auth/register:
+    post:
+      tags: [Authentication]
+      operationId: register
+      summary: Create a regular user account
+      description: |
+        Registration always assigns the user role. Privileged roles can only
+        be assigned by an administrator through PATCH /users/{userId}.
+        Passwords are stored as bcrypt hashes and never returned.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [fullName, email, password]
+              properties:
+                fullName:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                email:
+                  type: string
+                  format: email
+                  maxLength: 320
+                password:
+                  type: string
+                  format: password
+                  minLength: 12
+                  maxLength: 72
+            example:
+              fullName: Andrei Ionescu
+              email: andrei.ionescu@usv.ro
+              password: example-password-12
+      responses:
+        '201':
+          description: Account created with the user role.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '409':
+          description: The email address is already registered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
   /auth/logout:
     post:
       tags: [Authentication]
@@ -127,6 +187,89 @@ paths:
                 $ref: '#/components/schemas/User'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /users:
+    get:
+      tags: [Administration]
+      operationId: listUsers
+      summary: List user accounts
+      description: Available to administrators only.
+      security:
+        - cookieAuth: []
+      x-required-roles: [administrator]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: User accounts without password hashes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /users/{userId}:
+    patch:
+      tags: [Administration]
+      operationId: updateUserAccess
+      summary: Update a user's role or active status
+      description: Available to administrators only.
+      security:
+        - cookieAuth: []
+      x-required-roles: [administrator]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                role:
+                  $ref: '#/components/schemas/UserRole'
+                isActive:
+                  type: boolean
+            example:
+              role: manager
+      responses:
+        '200':
+          description: Updated account without a password hash.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/ServerError'
 
@@ -1192,6 +1335,18 @@ components:
             code: INTERNAL_SERVER_ERROR
             message: An unexpected error occurred.
   schemas:
+    Pagination:
+      type: object
+      required: [page, pageSize, totalItems, totalPages]
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalItems:
+          type: integer
+        totalPages:
+          type: integer
     UserRole:
       type: string
       enum: [user, manager, administrator]
