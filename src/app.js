@@ -3,7 +3,6 @@ import express from 'express';
 import helmet from 'helmet';
 import authRoutes from './routes/authRoutes.js';
 import resourceRoutes from './routes/resourceRoutes.js';
-import userRoutes from './routes/userRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -41,7 +40,6 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use(errorHandler);
 

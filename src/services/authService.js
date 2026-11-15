@@ -16,10 +16,6 @@ function toUserResponse(user) {
   };
 }
 
-function escapeLikeWildcards(value) {
-  return value.replace(/[\\%_]/g, '\\$&');
-}
-
 export async function login(email, password) {
   const user = await User.unscoped().findOne({
     attributes: [
@@ -32,7 +28,7 @@ export async function login(email, password) {
       'createdAt',
       'updatedAt',
     ],
-    where: { email: { [Op.iLike]: escapeLikeWildcards(email.trim()) } },
+    where: { email: { [Op.iLike]: email.trim() } },
   });
 
   if (
@@ -56,52 +52,6 @@ export async function login(email, password) {
     accessToken,
     user: toUserResponse(user),
   };
-}
-
-export async function register({ fullName, email, password }) {
-  const normalizedEmail = email.trim().toLowerCase();
-  const existingUser = await User.findOne({
-    attributes: ['id'],
-    where: {
-      email: { [Op.iLike]: escapeLikeWildcards(normalizedEmail) },
-    },
-  });
-
-  if (existingUser) {
-    throw new ApiError(
-      409,
-      'EMAIL_IN_USE',
-      'Adresa de e-mail este deja asociată unui cont.',
-    );
-  }
-
-  const passwordHash = await bcrypt.hash(password, 12);
-  let user;
-
-  try {
-    user = await User.create({
-      fullName: fullName.trim(),
-      email: normalizedEmail,
-      passwordHash,
-      role: 'user',
-    });
-  } catch (error) {
-    const isEmailConflict =
-      error.name === 'SequelizeUniqueConstraintError' &&
-      error.errors?.some(({ path }) => path === 'email');
-
-    if (isEmailConflict) {
-      throw new ApiError(
-        409,
-        'EMAIL_IN_USE',
-        'Adresa de e-mail este deja asociată unui cont.',
-      );
-    }
-
-    throw error;
-  }
-
-  return toUserResponse(user);
 }
 
 export async function getCurrentUser(userId) {
