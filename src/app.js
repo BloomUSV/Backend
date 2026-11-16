@@ -2,6 +2,8 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import authRoutes from './routes/authRoutes.js';
+import calendarRoutes from './routes/calendarRoutes.js';
+import maintenanceRoutes from './routes/maintenanceRoutes.js';
 import resourceRoutes from './routes/resourceRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -43,6 +45,8 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/resources', resourceRoutes);
+app.use('/api/calendar', calendarRoutes);
+app.use('/api/maintenance-blocks', maintenanceRoutes);
 app.use(errorHandler);
 
 export default app;

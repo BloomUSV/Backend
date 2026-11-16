@@ -140,3 +140,43 @@ export const Reservation = sequelize.define(
     createdAt: false,
   },
 );
+
+export const MaintenanceBlock = sequelize.define(
+  'MaintenanceBlock',
+  {
+    id: {
+      type: DataTypes.UUID,
+      primaryKey: true,
+      defaultValue: DataTypes.UUIDV4,
+    },
+    resourceId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'resource_id',
+    },
+    startsAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      field: 'starts_at',
+    },
+    endsAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      field: 'ends_at',
+    },
+    reason: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    createdBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'created_by',
+    },
+  },
+  {
+    tableName: 'maintenance_blocks',
+    updatedAt: false,
+    createdAt: false,
+  },
+);
