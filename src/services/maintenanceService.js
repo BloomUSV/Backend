@@ -69,7 +69,7 @@ export async function createMaintenanceBlock(input, createdBy) {
     throw new ApiError(
       400,
       'VALIDATION_ERROR',
-      'Sfârșitul intervalului trebuie să fi ulterior începutului.',
+      'Sfârșitul intervalului trebuie să fie ulterior începutului.',
     );
   }
 
@@ -78,7 +78,7 @@ export async function createMaintenanceBlock(input, createdBy) {
     throw new ApiError(
       422,
       'VALIDATION_ERROR',
-      'Creatătorul specificat nu este un utilizator activ.',
+      'Creatorul specificat nu este un utilizator activ.',
     );
   }
 

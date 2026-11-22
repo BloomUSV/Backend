@@ -94,11 +94,16 @@ export async function listWaitlist(userId, includeAll) {
 export async function createWaitlistEntry(input, userId) {
   const start = new Date(input.desiredStart);
   const end = new Date(input.desiredEnd);
-  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) {
+  if (
+    isNaN(start.getTime()) ||
+    isNaN(end.getTime()) ||
+    start < new Date() ||
+    start >= end
+  ) {
     throw new ApiError(
       400,
       'VALIDATION_ERROR',
-      'Intervalul dorit nu este valid.',
+      'Alege un interval viitor cu sfârșitul ulterior începutului.',
     );
   }
   const resource = await Resource.findOne({

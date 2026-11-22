@@ -97,11 +97,16 @@ export async function createReservation(input, actor) {
   }
   const start = new Date(input.startsAt);
   const end = new Date(input.endsAt);
-  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) {
+  if (
+    isNaN(start.getTime()) ||
+    isNaN(end.getTime()) ||
+    start < new Date() ||
+    start >= end
+  ) {
     throw new ApiError(
       400,
       'VALIDATION_ERROR',
-      'Intervalul rezervării nu este valid.',
+      'Alege un interval viitor cu sfârșitul ulterior începutului.',
     );
   }
 
@@ -177,11 +182,16 @@ export async function updateReservation(id, input, actor) {
 
   const start = new Date(input.startsAt ?? reservation.startsAt);
   const end = new Date(input.endsAt ?? reservation.endsAt);
-  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) {
+  if (
+    isNaN(start.getTime()) ||
+    isNaN(end.getTime()) ||
+    start < new Date() ||
+    start >= end
+  ) {
     throw new ApiError(
       400,
       'VALIDATION_ERROR',
-      'Intervalul rezervării nu este valid.',
+      'Alege un interval viitor cu sfârșitul ulterior începutului.',
     );
   }
   await assertResourceAvailable(

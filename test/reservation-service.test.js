@@ -66,6 +66,51 @@ test('rejects reservations that overlap an active booking', async () => {
   );
 });
 
+test('rejects past reservation intervals when creating or modifying', async () => {
+  const startsAt = new Date(Date.now() - 60_000);
+  const endsAt = new Date(Date.now() + 60_000);
+  const reservation = {
+    id: 'reservation-1',
+    userId: '8b28915c-fc35-4f90-b03b-5cf41a95a66d',
+    status: 'confirmed',
+  };
+
+  await assert.rejects(
+    reservationService.createReservation(
+      {
+        resourceId: '29fe1434-a3ef-43be-a0fc-2ab4b52dd332',
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+      },
+      {
+        sub: reservation.userId,
+        role: 'user',
+      },
+    ),
+    (error) => error.status === 400 && error.code === 'VALIDATION_ERROR',
+  );
+
+  await withStubs(
+    [[models.Reservation, 'findByPk', async () => reservation]],
+    async () => {
+      await assert.rejects(
+        reservationService.updateReservation(
+          reservation.id,
+          {
+            startsAt: startsAt.toISOString(),
+            endsAt: endsAt.toISOString(),
+          },
+          {
+            sub: reservation.userId,
+            role: 'user',
+          },
+        ),
+        (error) => error.status === 400 && error.code === 'VALIDATION_ERROR',
+      );
+    },
+  );
+});
+
 test('manager and administrator cannot create personal reservations', async () => {
   for (const role of ['manager', 'administrator']) {
     await assert.rejects(

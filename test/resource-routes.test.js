@@ -203,13 +203,44 @@ test('logout clears the session cookie', async () => {
   assert.match(response.headers['set-cookie'][0], /Path=\/api/i);
 });
 
-test('resource creation requires an authenticated manager', async () => {
+test('resource creation requires an authenticated privileged user', async () => {
   const response = await request(app)
     .post('/api/resources')
     .send({ name: 'Resource' });
 
   assert.equal(response.status, 401);
   assert.equal(response.body.code, 'UNAUTHORIZED');
+});
+
+test('administrators can create resources', async () => {
+  const originalCreate = Resource.create;
+  const createdAt = new Date('2025-01-10T09:00:00Z');
+  Resource.create = async (values) => ({
+    id: authenticatedUserId,
+    ...values,
+    isActive: true,
+    createdAt,
+    updatedAt: createdAt,
+  });
+
+  try {
+    await withAuthenticatedUser('administrator', true, async (cookie) => {
+      const response = await request(app)
+        .post('/api/resources')
+        .set('Cookie', cookie)
+        .set('Origin', 'http://localhost:8443')
+        .send({
+          name: 'Research microscope',
+          type: 'equipment',
+          location: 'Research lab',
+        });
+
+      assert.equal(response.status, 201);
+      assert.equal(response.body.name, 'Research microscope');
+    });
+  } finally {
+    Resource.create = originalCreate;
+  }
 });
 
 test('resource creation rejects a user role from the database', async () => {
