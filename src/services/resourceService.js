@@ -1,6 +1,12 @@
 import { Op, cast, col, where as sequelizeWhere } from 'sequelize';
 import { ApiError } from '../errors/ApiError.js';
-import { Reservation, Resource, User } from '../models/index.js';
+import {
+  MaintenanceBlock,
+  Notification,
+  Reservation,
+  Resource,
+  User,
+} from '../models/index.js';
 
 const ACTIVE_RESERVATION_STATES = ['pending', 'confirmed', 'in_progress'];
 
@@ -79,6 +85,24 @@ async function listResourcesByStatus(query, isActive) {
 
     if (unavailableResourceIds.length > 0) {
       where.id = { [Op.notIn]: unavailableResourceIds };
+    }
+
+    const maintenanceBlocks = await MaintenanceBlock.findAll({
+      attributes: ['resourceId'],
+      where: {
+        startsAt: { [Op.lt]: new Date(query.availableTo) },
+        endsAt: { [Op.gt]: new Date(query.availableFrom) },
+      },
+      raw: true,
+    });
+    const maintenanceResourceIds = [
+      ...new Set(maintenanceBlocks.map(({ resourceId }) => resourceId)),
+    ];
+    if (maintenanceResourceIds.length > 0) {
+      const excludedIds = where.id?.[Op.notIn]
+        ? [...where.id[Op.notIn], ...maintenanceResourceIds]
+        : maintenanceResourceIds;
+      where.id = { [Op.notIn]: excludedIds };
     }
   }
 
@@ -161,6 +185,9 @@ export async function createResource(input) {
 export async function updateResource(resourceId, input) {
   const values = normalizeResourceInput(input);
   await validateManager(values.managerId);
+  const previous = await Resource.findOne({
+    where: { id: resourceId, isActive: true },
+  });
 
   const [updatedCount, [resource]] = await Resource.update(values, {
     where: { id: resourceId, isActive: true },
@@ -169,6 +196,29 @@ export async function updateResource(resourceId, input) {
 
   if (updatedCount === 0) {
     throw new ApiError(404, 'NOT_FOUND', 'Resursa nu a fost găsită.');
+  }
+  if (
+    previous &&
+    previous.state === 'available' &&
+    values.state !== 'available'
+  ) {
+    const reservations = await Reservation.findAll({
+      where: {
+        resourceId,
+        status: { [Op.in]: ACTIVE_RESERVATION_STATES },
+        endsAt: { [Op.gt]: new Date() },
+      },
+      attributes: ['id', 'userId'],
+      raw: true,
+    });
+    for (const reservation of reservations) {
+      await Notification.create({
+        userId: reservation.userId,
+        reservationId: reservation.id,
+        message: 'Resursa rezervată este temporar indisponibilă.',
+        type: 'resource_maintenance',
+      });
+    }
   }
 
   return toResourceResponse(resource);

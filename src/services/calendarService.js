@@ -2,11 +2,7 @@ import { Op } from 'sequelize';
 import { ApiError } from '../errors/ApiError.js';
 import { MaintenanceBlock, Reservation, Resource } from '../models/index.js';
 
-const CALENDAR_RESERVATION_STATUSES = [
-  'pending',
-  'confirmed',
-  'in_progress',
-];
+const CALENDAR_RESERVATION_STATUSES = ['pending', 'confirmed', 'in_progress'];
 
 /**
  * Normalizează un eveniment de calendar în formatul de răspuns al API-ului.
@@ -31,19 +27,27 @@ function toCalendarEvent(event, type, resourceName) {
 }
 
 /**
- * Returnează evenimentele de calendar (rezervări active și blocuri de mentenanță)
- * pentru un interval de timp, opțional filtrate după resursă.
+ * Returnează evenimentele de calendar (rezervări active și blocuri de
+ * mentenanță) pentru un interval de timp, opțional filtrate după resursă.
  */
 export async function getCalendarEvents({ start, end, resourceId, status }) {
   const startDate = new Date(start);
   const endDate = new Date(end);
 
   if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-    throw new ApiError(400, 'VALIDATION_ERROR', 'Intervalul de timp nu este valid.');
+    throw new ApiError(
+      400,
+      'VALIDATION_ERROR',
+      'Intervalul de timp nu este valid.',
+    );
   }
 
   if (startDate >= endDate) {
-    throw new ApiError(400, 'VALIDATION_ERROR', 'Sfârșitul intervalului trebuie să fie ulterior începutului.');
+    throw new ApiError(
+      400,
+      'VALIDATION_ERROR',
+      'Sfârșitul intervalului trebuie să fie ulterior începutului.',
+    );
   }
 
   if (resourceId) {
@@ -78,21 +82,25 @@ export async function getCalendarEvents({ start, end, resourceId, status }) {
       raw: true,
     }),
     MaintenanceBlock.findAll({
-      where: resourceId ? { resourceId } : {},
+      where: {
+        ...(resourceId ? { resourceId } : {}),
+        startsAt: { [Op.lt]: endDate },
+        endsAt: { [Op.gt]: startDate },
+      },
       order: [['startsAt', 'ASC']],
       raw: true,
     }),
     resourceId
       ? Resource.findAll({
-          where: { id: resourceId, isActive: true },
-          attributes: ['id', 'name'],
-          raw: true,
-        })
+        where: { id: resourceId, isActive: true },
+        attributes: ['id', 'name'],
+        raw: true,
+      })
       : Resource.findAll({
-          where: { isActive: true },
-          attributes: ['id', 'name'],
-          raw: true,
-        }),
+        where: { isActive: true },
+        attributes: ['id', 'name'],
+        raw: true,
+      }),
   ]);
 
   const resourceNames = Object.fromEntries(
@@ -104,7 +112,11 @@ export async function getCalendarEvents({ start, end, resourceId, status }) {
   for (const reservation of reservations) {
     if (resourceNames[reservation.resourceId]) {
       events.push(
-        toCalendarEvent(reservation, 'reservation', resourceNames[reservation.resourceId]),
+        toCalendarEvent(
+          reservation,
+          'reservation',
+          resourceNames[reservation.resourceId],
+        ),
       );
     }
   }

@@ -68,7 +68,7 @@ const router = Router();
 router.get(
   '/archived',
   authenticate,
-  authorize('manager', 'administrator'),
+  authorize('manager'),
   query('search')
     .optional()
     .isString()
@@ -141,7 +141,7 @@ router.get(
 router.post(
   '/',
   authenticate,
-  authorize('manager', 'administrator'),
+  authorize('manager'),
   rejectUnknownFields(RESOURCE_FIELDS),
   resourceBodyValidation,
   validateRequest(),
@@ -151,7 +151,7 @@ router.post(
 router.put(
   '/:resourceId',
   authenticate,
-  authorize('manager', 'administrator'),
+  authorize('manager'),
   param('resourceId').isUUID().withMessage('Resource ID must be a valid UUID.'),
   rejectUnknownFields(RESOURCE_FIELDS),
   resourceBodyValidation,
@@ -162,7 +162,7 @@ router.put(
 router.delete(
   '/:resourceId',
   authenticate,
-  authorize('manager', 'administrator'),
+  authorize('manager'),
   param('resourceId').isUUID().withMessage('Resource ID must be a valid UUID.'),
   validateRequest(400),
   deleteResource,
@@ -171,7 +171,7 @@ router.delete(
 router.post(
   '/:resourceId/restore',
   authenticate,
-  authorize('manager', 'administrator'),
+  authorize('manager'),
   param('resourceId').isUUID().withMessage('Resource ID must be a valid UUID.'),
   validateRequest(400),
   restoreArchivedResource,

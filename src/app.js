@@ -6,6 +6,11 @@ import calendarRoutes from './routes/calendarRoutes.js';
 import maintenanceRoutes from './routes/maintenanceRoutes.js';
 import resourceRoutes from './routes/resourceRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import reservationRoutes from './routes/reservationRoutes.js';
+import waitlistRoutes from './routes/waitlistRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
+import feedbackRoutes from './routes/feedbackRoutes.js';
+import ruleRoutes from './routes/ruleRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -47,6 +52,11 @@ app.use('/api/users', userRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/maintenance-blocks', maintenanceRoutes);
+app.use('/api/reservations', reservationRoutes);
+app.use('/api/waitlist', waitlistRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/feedback', feedbackRoutes);
+app.use('/api/rules', ruleRoutes);
 app.use(errorHandler);
 
 export default app;

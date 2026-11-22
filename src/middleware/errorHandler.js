@@ -22,6 +22,16 @@ export function errorHandler(error, req, res, next) {
     });
   }
 
+  if (
+    error?.name === 'SequelizeExclusionConstraintError' ||
+    error?.parent?.code === '23P01'
+  ) {
+    return res.status(409).json({
+      code: 'RESERVATION_CONFLICT',
+      message: 'Intervalul a fost ocupat în timpul cererii.',
+    });
+  }
+
   console.error(error);
   return res.status(500).json({
     code: 'INTERNAL_SERVER_ERROR',

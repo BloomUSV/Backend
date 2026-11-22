@@ -1,6 +1,13 @@
 import { Op } from 'sequelize';
 import { ApiError } from '../errors/ApiError.js';
-import { MaintenanceBlock, Resource, User } from '../models/index.js';
+import {
+  MaintenanceBlock,
+  Reservation,
+  Resource,
+  User,
+} from '../models/index.js';
+import { notifyWaitlistAvailable } from './waitlistService.js';
+import { notifyWaitlistMaintenance } from './waitlistService.js';
 
 function toMaintenanceBlockResponse(block) {
   return {
@@ -51,16 +58,44 @@ export async function createMaintenanceBlock(input, createdBy) {
   const endDate = new Date(endsAt);
 
   if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-    throw new ApiError(400, 'VALIDATION_ERROR', 'Intervalul de timp nu este valid.');
+    throw new ApiError(
+      400,
+      'VALIDATION_ERROR',
+      'Intervalul de timp nu este valid.',
+    );
   }
 
   if (startDate >= endDate) {
-    throw new ApiError(400, 'VALIDATION_ERROR', 'Sfârșitul intervalului trebuie să fi ulterior începutului.');
+    throw new ApiError(
+      400,
+      'VALIDATION_ERROR',
+      'Sfârșitul intervalului trebuie să fi ulterior începutului.',
+    );
   }
 
   const user = createdBy ? await User.findByPk(createdBy) : null;
   if (createdBy && (!user || !user.isActive)) {
-    throw new ApiError(422, 'VALIDATION_ERROR', 'Creatătorul specificat nu este un utilizator activ.');
+    throw new ApiError(
+      422,
+      'VALIDATION_ERROR',
+      'Creatătorul specificat nu este un utilizator activ.',
+    );
+  }
+
+  const overlappingReservation = await Reservation.findOne({
+    where: {
+      resourceId,
+      status: { [Op.in]: ['pending', 'confirmed', 'in_progress'] },
+      startsAt: { [Op.lt]: endDate },
+      endsAt: { [Op.gt]: startDate },
+    },
+  });
+  if (overlappingReservation) {
+    throw new ApiError(
+      409,
+      'RESOURCE_UNAVAILABLE',
+      'Intervalul se suprapune cu rezervări active.',
+    );
   }
 
   const block = await MaintenanceBlock.create({
@@ -70,6 +105,7 @@ export async function createMaintenanceBlock(input, createdBy) {
     reason: reason.trim(),
     createdBy: createdBy || null,
   });
+  await notifyWaitlistMaintenance(resourceId, startDate, endDate);
 
   return toMaintenanceBlockResponse(block);
 }
@@ -78,13 +114,15 @@ export async function createMaintenanceBlock(input, createdBy) {
  * Șterge un bloc de mentenanță după ID.
  */
 export async function deleteMaintenanceBlock(blockId) {
-  const deletedCount = await MaintenanceBlock.destroy({
-    where: { id: blockId },
-  });
-
-  if (deletedCount === 0) {
-    throw new ApiError(404, 'NOT_FOUND', 'Blocul de mentenanță nu a fost găsit.');
+  const block = await MaintenanceBlock.findByPk(blockId);
+  if (!block) {
+    throw new ApiError(
+      404,
+      'NOT_FOUND',
+      'Blocul de mentenanță nu a fost găsit.',
+    );
   }
-
+  await block.destroy();
+  await notifyWaitlistAvailable(block.resourceId, block.startsAt, block.endsAt);
   return { id: blockId };
 }
