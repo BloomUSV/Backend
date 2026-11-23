@@ -1,12 +1,38 @@
 import { ApiError } from '../errors/ApiError.js';
-import { Feedback, Resource } from '../models/index.js';
+import { Feedback, Resource, User } from '../models/index.js';
 
 export async function listFeedback({ userId, includeAll }) {
   const where = includeAll ? {} : { userId };
-  return Feedback.findAll({
+  const rows = await Feedback.findAll({
     where,
     order: [['createdAt', 'DESC']],
+    raw: true,
   });
+  const userIds = [...new Set(rows.map((row) => row.userId))];
+  const resourceIds = [...new Set(rows.map((row) => row.resourceId))];
+  const users = userIds.length
+    ? await User.findAll({
+        where: { id: userIds },
+        attributes: ['id', 'fullName'],
+        raw: true,
+      })
+    : [];
+  const resources = resourceIds.length
+    ? await Resource.findAll({
+        where: { id: resourceIds },
+        attributes: ['id', 'name'],
+        raw: true,
+      })
+    : [];
+  const userNames = Object.fromEntries(users.map((u) => [u.id, u.fullName]));
+  const resourceNames = Object.fromEntries(
+    resources.map((r) => [r.id, r.name]),
+  );
+  return rows.map((row) => ({
+    ...row,
+    userName: userNames[row.userId] || null,
+    resourceName: resourceNames[row.resourceId] || null,
+  }));
 }
 
 export async function createFeedback(input, userId) {

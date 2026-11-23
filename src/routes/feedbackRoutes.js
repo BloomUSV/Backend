@@ -6,21 +6,26 @@ import * as feedbackService from '../services/feedbackService.js';
 
 const router = Router();
 
-router.get('/', authenticate, authorize('user'), async (req, res, next) => {
-  try {
-    const includeAll =
-      req.query.scope === 'all' &&
-      ['manager', 'administrator'].includes(req.auth.role);
-    res.json(
-      await feedbackService.listFeedback({
-        userId: req.auth.sub,
-        includeAll,
-      }),
-    );
-  } catch (error) {
-    next(error);
-  }
-});
+router.get(
+  '/',
+  authenticate,
+  authorize('user', 'manager', 'administrator'),
+  async (req, res, next) => {
+    try {
+      const includeAll =
+        req.query.scope === 'all' &&
+        ['manager', 'administrator'].includes(req.auth.role);
+      res.json(
+        await feedbackService.listFeedback({
+          userId: req.auth.sub,
+          includeAll,
+        }),
+      );
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 router.post(
   '/',
