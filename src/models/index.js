@@ -105,6 +105,12 @@ export const Reservation = sequelize.define(
     id: {
       type: DataTypes.UUID,
       primaryKey: true,
+      defaultValue: DataTypes.UUIDV4,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'user_id',
     },
     resourceId: {
       type: DataTypes.UUID,
@@ -132,13 +138,177 @@ export const Reservation = sequelize.define(
         'expired',
       ),
       allowNull: false,
+      defaultValue: 'pending',
+    },
+    purpose: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: '',
+    },
+    teamName: {
+      type: DataTypes.STRING(200),
+      allowNull: true,
+      field: 'team_name',
+    },
+    reviewedBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'reviewed_by',
     },
   },
   {
     tableName: 'reservations',
-    updatedAt: false,
-    createdAt: false,
+    underscored: true,
   },
+);
+
+export const WaitlistEntry = sequelize.define(
+  'WaitlistEntry',
+  {
+    id: {
+      type: DataTypes.UUID,
+      primaryKey: true,
+      defaultValue: DataTypes.UUIDV4,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'user_id',
+    },
+    resourceId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'resource_id',
+    },
+    desiredStart: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      field: 'desired_start',
+    },
+    desiredEnd: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      field: 'desired_end',
+    },
+    requirements: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: {},
+    },
+    status: {
+      type: DataTypes.ENUM('waiting', 'notified', 'confirmed', 'expired'),
+      allowNull: false,
+      defaultValue: 'waiting',
+    },
+  },
+  { tableName: 'waitlist_entries', underscored: true },
+);
+
+export const Notification = sequelize.define(
+  'Notification',
+  {
+    id: {
+      type: DataTypes.UUID,
+      primaryKey: true,
+      defaultValue: DataTypes.UUIDV4,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'user_id',
+    },
+    reservationId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'reservation_id',
+    },
+    message: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    type: {
+      type: DataTypes.ENUM(
+        'booking_confirmed',
+        'booking_cancelled',
+        'slot_available',
+        'resource_maintenance',
+      ),
+      allowNull: false,
+    },
+    isRead: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: 'is_read',
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      field: 'created_at',
+    },
+  },
+  {
+    tableName: 'notifications',
+    timestamps: false,
+  },
+);
+
+export const Feedback = sequelize.define(
+  'Feedback',
+  {
+    id: {
+      type: DataTypes.UUID,
+      primaryKey: true,
+      defaultValue: DataTypes.UUIDV4,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'user_id',
+    },
+    resourceId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'resource_id',
+    },
+    rating: {
+      type: DataTypes.SMALLINT,
+      allowNull: false,
+    },
+    message: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+  },
+  {
+    tableName: 'feedback',
+    updatedAt: false,
+  },
+);
+
+export const ResourceRule = sequelize.define(
+  'ResourceRule',
+  {
+    id: {
+      type: DataTypes.UUID,
+      primaryKey: true,
+      defaultValue: DataTypes.UUIDV4,
+    },
+    resourceId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'resource_id',
+    },
+    title: {
+      type: DataTypes.STRING(200),
+      allowNull: false,
+    },
+    content: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+  },
+  { tableName: 'resource_rules', underscored: true },
 );
 
 export const MaintenanceBlock = sequelize.define(

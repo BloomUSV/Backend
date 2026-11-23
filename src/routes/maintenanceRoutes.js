@@ -13,7 +13,10 @@ const router = Router();
 router.get(
   '/',
   authenticate,
-  query('resourceId').optional().isUUID().withMessage('ID-ul resursei trebuie să fie un UUID valid.'),
+  query('resourceId')
+    .optional()
+    .isUUID()
+    .withMessage('ID-ul resursei trebuie să fie un UUID valid.'),
   validateRequest(400),
   getMaintenanceBlocks,
 );
@@ -21,7 +24,7 @@ router.get(
 router.post(
   '/',
   authenticate,
-  authorize('manager', 'administrator'),
+  authorize('manager'),
   body('resourceId')
     .isUUID()
     .withMessage('ID-ul resursei trebuie să fie un UUID valid.'),
@@ -33,10 +36,7 @@ router.post(
     .isISO8601()
     .toDate()
     .withMessage('Data de sfârșit trebuie să fie validă.'),
-  body('reason')
-    .trim()
-    .notEmpty()
-    .withMessage('Motivul este obligatoriu.'),
+  body('reason').trim().notEmpty().withMessage('Motivul este obligatoriu.'),
   validateRequest(),
   postMaintenanceBlock,
 );
@@ -44,8 +44,10 @@ router.post(
 router.delete(
   '/:blockId',
   authenticate,
-  authorize('manager', 'administrator'),
-  param('blockId').isUUID().withMessage('ID-ul blocului trebuie să fie un UUID valid.'),
+  authorize('manager'),
+  param('blockId')
+    .isUUID()
+    .withMessage('ID-ul blocului trebuie să fie un UUID valid.'),
   validateRequest(400),
   removeMaintenanceBlock,
 );

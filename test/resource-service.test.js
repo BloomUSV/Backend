@@ -169,10 +169,11 @@ test('rejects a managerId that belongs to a non-manager account', async () => {
 test('updates an active resource and returns its database representation', async () => {
   await withStubs(
     [
+      [Resource, 'findOne', async () => ({ ...resource, state: 'available' })],
       [
         Resource,
         'update',
-        async (_, options) => [
+        async () => [
           1,
           [{ ...resource, name: 'Robot actualizat', location: 'Corp E' }],
         ],
