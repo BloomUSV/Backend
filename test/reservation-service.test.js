@@ -130,6 +130,63 @@ test('manager and administrator cannot create personal reservations', async () =
   }
 });
 
+test('manager approval confirms a pending reservation and notifies its owner', async () => {
+  let notificationInput;
+  const reservation = {
+    id: 'reservation-1',
+    userId: '8b28915c-fc35-4f90-b03b-5cf41a95a66d',
+    resourceId: '29fe1434-a3ef-43be-a0fc-2ab4b52dd332',
+    startsAt: new Date('2026-12-01T10:00:00Z'),
+    endsAt: new Date('2026-12-01T11:00:00Z'),
+    status: 'pending',
+    reviewedBy: null,
+    update: async function (values) {
+      Object.assign(this, values);
+    },
+  };
+
+  await withStubs(
+    [
+      [models.Reservation, 'findByPk', async () => reservation],
+      [
+        models.Notification,
+        'create',
+        async (input) => {
+          notificationInput = input;
+          return input;
+        },
+      ],
+    ],
+    async () => {
+      const result = await reservationService.reviewReservation(
+        reservation.id,
+        'confirmed',
+        {
+          sub: 'manager-1',
+          role: 'manager',
+        },
+      );
+
+      assert.equal(result.status, 'confirmed');
+      assert.equal(result.reviewedBy, 'manager-1');
+      assert.equal(notificationInput.userId, reservation.userId);
+      assert.equal(notificationInput.type, 'booking_confirmed');
+    },
+  );
+});
+
+test('notification model supplies the required creation timestamp', async () => {
+  const notification = models.Notification.build({
+    userId: '8b28915c-fc35-4f90-b03b-5cf41a95a66d',
+    reservationId: '29fe1434-a3ef-43be-a0fc-2ab4b52dd332',
+    message: 'Rezervarea ta a fost confirmată.',
+    type: 'booking_confirmed',
+  });
+
+  assert.ok(notification.createdAt instanceof Date);
+  await assert.doesNotReject(notification.validate());
+});
+
 test('rejects reservations that overlap a maintenance period', async () => {
   await withStubs(
     [
