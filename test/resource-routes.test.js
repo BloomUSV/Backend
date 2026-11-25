@@ -185,9 +185,13 @@ test('login returns the user and sets an HttpOnly session cookie', async () => {
 
     assert.equal(response.status, 200);
     assert.deepEqual(Object.keys(response.body), ['user']);
-    assert.match(response.headers['set-cookie'][0], /HttpOnly/i);
-    assert.match(response.headers['set-cookie'][0], /SameSite=Strict/i);
-    assert.match(response.headers['set-cookie'][0], /Path=\/api/i);
+    assert.match(response.headers['set-cookie'][0], /Expires=/i);
+    assert.match(response.headers['set-cookie'][0], /Path=\//i);
+    const sessionCookie = response.headers['set-cookie'].find((cookie) =>
+      /Path=\/api/i.test(cookie),
+    );
+    assert.match(sessionCookie, /HttpOnly/i);
+    assert.match(sessionCookie, /SameSite=Strict/i);
   } finally {
     User.unscoped = originalUnscoped;
   }
@@ -199,8 +203,9 @@ test('logout clears the session cookie', async () => {
     .set('Origin', 'http://localhost:8443');
 
   assert.equal(response.status, 204);
-  assert.match(response.headers['set-cookie'][0], /Expires=/i);
-  assert.match(response.headers['set-cookie'][0], /Path=\/api/i);
+  assert.equal(response.headers['set-cookie'].length, 2);
+  assert.match(response.headers['set-cookie'][0], /Path=\//i);
+  assert.match(response.headers['set-cookie'][1], /Path=\/api/i);
 });
 
 test('resource creation requires an authenticated privileged user', async () => {
